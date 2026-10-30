@@ -1,6 +1,5 @@
-
-.env
+node_modules/
 sessions/
 tmp/
-node_modules/
-lib/database/data/activity/
+.env
+package-lock.json
