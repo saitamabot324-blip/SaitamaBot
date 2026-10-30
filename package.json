@@ -15,6 +15,7 @@
     "@axel-dev09/zen-dl": "latest",
     "@hiudyy/ytdl": "^0.2.3",
     "@img/sharp-wasm32": "^0.35.4",
+    "@traceryn/tiktok-sdk": "^1.1.0",
     "@whiskeysockets/baileys": "github:itsliaaa/baileys",
     "awesome-phonenumber": "^6.10.0",
     "axios": "^1.6.8",

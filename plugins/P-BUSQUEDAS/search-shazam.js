@@ -210,7 +210,7 @@ async function sendShazamResult(
       ?.images
       ?.[0]
       ?.url ||
-    'https://files.catbox.moe/fettau.jpg'
+    'https://files.catbox.moe/rszopk.png'
 
 
   const title =

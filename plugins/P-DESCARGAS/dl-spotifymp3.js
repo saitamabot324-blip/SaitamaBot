@@ -517,7 +517,7 @@ handler.command = [
 ]
 
 
-handler.register = true
+handler.register = false
 
 
 export default handler

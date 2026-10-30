@@ -501,6 +501,6 @@ handler.command = [
   'ytadoc'
 ]
 
-handler.register = true
+handler.register = false
 
 export default handler

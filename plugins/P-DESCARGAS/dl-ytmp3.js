@@ -518,6 +518,6 @@ handler.command = [
   'yta'
 ]
 
-handler.register = true
+handler.register = false
 
 export default handler
