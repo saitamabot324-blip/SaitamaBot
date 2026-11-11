@@ -1,40 +1,27 @@
-import 'dotenv/config'
 import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 
-const API_URL =
-  'https://hikariapi.skyultraweb.com/api/scrapers/facebook'
-
-const API_KEY = process.env.HIKARI_API_KEY
-
+const API_URL = 'https://api.delirius.online/download/facebook'
 const TMP_DIR = './tmp'
 
 const isFacebookUrl = (url = '') => {
-  return /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|m\.facebook\.com)\//i.test(url)
+  return /^https?:\/\/(?:www\.|m\.)?(?:facebook\.com|fb\.watch)\//i.test(url)
 }
 
 const getFacebookUrl = (text = '') => {
   const match = text.match(
-    /https?:\/\/(?:www\.)?(?:facebook\.com|fb\.watch|m\.facebook\.com)\/[^\s]+/i
+    /https?:\/\/(?:www\.|m\.)?(?:facebook\.com|fb\.watch)\/[^\s]+/i
   )
 
   return match ? match[0].replace(/[)\]}>.,]+$/, '') : null
 }
 
-const hikariFacebook = async (url) => {
-  if (!API_KEY) {
-    throw new Error(
-      'No se encontró HIKARI_API_KEY en el archivo .env'
-    )
-  }
-
-  const apiUrl =
-    `${API_URL}?url=${encodeURIComponent(url)}`
-
-  const response = await axios.get(apiUrl, {
+// Obtener vídeo mediante Delirius API
+const deliriusFacebook = async (url) => {
+  const response = await axios.get(API_URL, {
+    params: { url },
     headers: {
-      'X-API-Key': API_KEY,
       Accept: 'application/json'
     },
     timeout: 60000,
@@ -42,74 +29,75 @@ const hikariFacebook = async (url) => {
   })
 
   if (response.status !== 200) {
-    throw new Error(
-      `Hikari respondió HTTP ${response.status}`
-    )
+    throw new Error(`Delirius respondió HTTP ${response.status}`)
   }
 
   const data = response.data
 
-  /*
-   * Hikari puede responder de estas dos formas:
-   *
-   * 1. {
-   *   success: true,
-   *   downloadUrl: "..."
-   * }
-   *
-   * 2. {
-   *   response: {
-   *     success: true,
-   *     downloadUrl: "..."
-   *   }
-   * }
-   */
-
-  const result = data?.response || data
-
-  if (!result?.success) {
-    throw new Error(
-      'Hikari no pudo obtener el vídeo de Facebook'
-    )
+  if (data?.status !== true) {
+    throw new Error('Delirius no pudo procesar el vídeo')
   }
 
-  if (!result?.downloadUrl) {
-    throw new Error(
-      'Hikari no devolvió downloadUrl'
-    )
+  if (!Array.isArray(data?.list) || !data.list.length) {
+    throw new Error('Delirius no devolvió vídeos disponibles')
   }
 
-  return result.downloadUrl
+  // Seleccionar la calidad más alta disponible
+  const videos = data.list
+    .filter(item => item?.url)
+    .sort((a, b) => {
+      const qualityA = parseInt(a.quality?.match(/\d+/)?.[0] || 0)
+      const qualityB = parseInt(b.quality?.match(/\d+/)?.[0] || 0)
+
+      return qualityB - qualityA
+    })
+
+  if (!videos.length) {
+    throw new Error('No se encontró ningún enlace de descarga')
+  }
+
+  return {
+    downloadUrl: videos[0].url,
+    quality: videos[0].quality || 'Desconocida',
+    thumbnail: data.thumb || null,
+    creator: data.creator || 'Delirius'
+  }
 }
 
+// Descargar archivo MP4
 const downloadVideo = async (url) => {
   fs.mkdirSync(TMP_DIR, { recursive: true })
 
-  const filename =
-    `facebook_${Date.now()}.mp4`
-
-  const filePath =
-    path.join(TMP_DIR, filename)
+  const filename = `facebook_${Date.now()}.mp4`
+  const filePath = path.join(TMP_DIR, filename)
 
   const response = await axios.get(url, {
     responseType: 'arraybuffer',
     timeout: 120000,
-    maxContentLength: 100 * 1024 * 1024,
-    maxBodyLength: 100 * 1024 * 1024
+    maxContentLength: 150 * 1024 * 1024,
+    maxBodyLength: 150 * 1024 * 1024
   })
 
-  fs.writeFileSync(filePath, response.data)
+  const buffer = Buffer.from(response.data)
+
+  if (!buffer.length) {
+    throw new Error('El vídeo descargado está vacío')
+  }
+
+  fs.writeFileSync(filePath, buffer)
 
   return filePath
 }
 
 let handler = async (m, { conn, text }) => {
+  let filePath = null
+
   try {
     const input = text?.trim()
 
     if (!input) {
       return m.reply(
-        `*༺═────── ✰ ──────═༻*
+`*༺═────── ✰ ──────═༻*
 
 *༻ 𝙵𝙰𝙲𝙴𝙱𝙾𝙾𝙺 ✰*
 
@@ -126,70 +114,84 @@ let handler = async (m, { conn, text }) => {
 
     if (!url || !isFacebookUrl(url)) {
       return m.reply(
-        `*༺═────── ✰ ──────═༻*
+`*༺═────── ✰ ──────═༻*
 
-*༻ 𝙴𝚛𝚛𝚘𝚛 𝙵𝙰𝙲𝙴𝙱𝙾𝙾𝙺*
+*༻ 𝙴𝚁𝚁𝙾𝚁 𝙵𝙰𝙲𝙴𝙱𝙾𝙾𝙺 ✰*
 
 ✰ La URL no parece ser válida.
 
-✰ Usa una URL pública de Facebook.
+✰ Utiliza un enlace público de Facebook.
 
 *༺═────── ✰ ──────═༻*`
       )
     }
 
-    await conn.sendMessage(
-      m.chat,
-      { react: { text: '⏳', key: m.key } }
-    )
+    await conn.sendMessage(m.chat, {
+      react: { text: '⏳', key: m.key }
+    })
 
-    const downloadUrl = await hikariFacebook(url)
+    // Consultar Delirius
+    const result = await deliriusFacebook(url)
 
-    const filePath = await downloadVideo(downloadUrl)
+    console.log('[DELIRIUS FACEBOOK]', result.quality)
 
-    const caption = '*Facebook Video*'
+    // Descargar vídeo
+    filePath = await downloadVideo(result.downloadUrl)
 
+    // Enviar vídeo
     await conn.sendMessage(
       m.chat,
       {
         video: fs.readFileSync(filePath),
         mimetype: 'video/mp4',
-        caption
+        fileName: 'Facebook.mp4',
+        caption:
+`*༺═────── ✰ ──────═༻*
+
+*༻ 𝙵𝙰𝙲𝙴𝙱𝙾𝙾𝙺 ✰*
+
+✰ Calidad: ${result.quality}
+✰ API: Delirius
+
+*༺═────── ✰ ──────═༻*`
       },
       { quoted: m }
     )
 
-    await conn.sendMessage(
-      m.chat,
-      { react: { text: '✅', key: m.key } }
-    )
-
-    try {
-      fs.unlinkSync(filePath)
-    } catch {}
+    await conn.sendMessage(m.chat, {
+      react: { text: '✅', key: m.key }
+    })
 
   } catch (error) {
     console.error(
-      '[HIKARI FACEBOOK]',
+      '[DELIRIUS FACEBOOK]',
       error?.response?.data || error.message
     )
 
-    await conn.sendMessage(
-      m.chat,
-      { react: { text: '❌', key: m.key } }
-    )
+    await conn.sendMessage(m.chat, {
+      react: { text: '❌', key: m.key }
+    }).catch(() => {})
 
     return m.reply(
-      `*༺═────── ✰ ──────═༻*
+`*༺═────── ✰ ──────═༻*
 
 *༻ 𝙴𝚁𝚁𝙾𝚁 𝙵𝙰𝙲𝙴𝙱𝙾𝙾𝙺 ✰*
 
 ✰ No se pudo descargar el vídeo.
 
-✰ Hikari no pudo procesar esta URL.
+✰ Comprueba que el enlace sea público o que Delirius esté disponible.
 
 *༺═────── ✰ ──────═༻*`
     )
+
+  } finally {
+    if (filePath && fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath)
+      } catch (error) {
+        console.error('[FACEBOOK CLEANUP]', error.message)
+      }
+    }
   }
 }
 

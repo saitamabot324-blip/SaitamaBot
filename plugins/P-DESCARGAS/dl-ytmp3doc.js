@@ -1,28 +1,18 @@
-import 'dotenv/config'
+
 import axios from 'axios'
 import fs from 'fs'
 import path from 'path'
 import { rm } from 'fs/promises'
-import { writeAudioTags } from '../../lib/audioTags.js'
 
 // ═══════════════════════════════════════
-// ✰ SAITAMABOT • YOUTUBE MP3 DOC • HIKARI
+// ✰ SAITAMABOT • YOUTUBE MP3 DOC • FAA
 // ═══════════════════════════════════════
 
-const API_KEY = process.env.HIKARI_API_KEY
+const API_URL = 'https://api-faa.my.id/faa/ytmp3'
 
-const API_URL =
-  'https://hikariapi.skyultraweb.com/api/scrapers/youtube/audio'
+const TMP_DIR = './tmp/saitamabot-ytmp3doc'
 
-const TMP_DIR =
-  './tmp/saitamabot-ytmp3doc'
-
-const QUALITIES = [
-  '320k',
-  '128k'
-]
-
-const MAX_ATTEMPTS = 8
+const MAX_ATTEMPTS = 3
 
 // ═══════════════════════════════════════
 // ✰ UTILIDADES
@@ -65,13 +55,63 @@ function esMP3(buffer) {
 }
 
 // ═══════════════════════════════════════
+// ✰ FAA API
+// ═══════════════════════════════════════
+
+async function obtenerAudio(youtubeUrl) {
+  const response = await axios.get(API_URL, {
+    params: {
+      url: youtubeUrl
+    },
+
+    timeout: 60000,
+
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'SaitamaBot'
+    },
+
+    validateStatus: () => true
+  })
+
+  const json = response.data
+
+  if (
+    response.status < 200 ||
+    response.status >= 300
+  ) {
+    throw new Error(
+      `Faa API respondió HTTP ${response.status}`
+    )
+  }
+
+  if (json?.status !== true) {
+    throw new Error(
+      json?.message || 'Faa API no pudo procesar el video.'
+    )
+  }
+
+  const info = json?.result
+
+  if (!info?.mp3) {
+    throw new Error(
+      'Faa API no devolvió el enlace MP3.'
+    )
+  }
+
+  return {
+    title: info.title || 'audio',
+    thumbnail: info.thumbnail || null,
+    duration: info.duration || null,
+    download: info.mp3
+  }
+}
+
+// ═══════════════════════════════════════
 // ✰ DESCARGAR MP3
 // ═══════════════════════════════════════
 
-async function descargarArchivo(
-  url,
-  destino
-) {
+async function descargarArchivo(url, destino) {
   const response = await axios.get(url, {
     responseType: 'arraybuffer',
     timeout: 120000,
@@ -79,73 +119,31 @@ async function descargarArchivo(
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/131 Mobile Safari/537.36',
-
-      Accept: '*/*'
+      Accept: 'audio/mpeg, audio/*, */*'
     },
 
+    maxRedirects: 5,
     validateStatus: () => true
   })
 
-  const contentType =
-    response.headers?.['content-type'] || ''
-
-  const buffer =
-    Buffer.from(response.data)
-
-  // Hikari todavía está preparando
   if (
-    contentType.includes(
-      'application/json'
-    ) ||
-    contentType.includes(
-      'text/json'
-    )
+    response.status < 200 ||
+    response.status >= 300
   ) {
-    let json
-
-    try {
-      json = JSON.parse(
-        buffer.toString()
-      )
-    } catch {
-      return {
-        ready: false,
-        retryAfterSeconds: 2
-      }
-    }
-
-    if (
-      json?.status === 'preparing' ||
-      json?.success === false
-    ) {
-      return {
-        ready: false,
-
-        retryAfterSeconds:
-          Number(
-            json?.retryAfterSeconds
-          ) || 2
-      }
-    }
-
-    return {
-      ready: false,
-      retryAfterSeconds: 2
-    }
+    throw new Error(
+      `Error descargando MP3: HTTP ${response.status}`
+    )
   }
 
-  // Validar que sea MP3
+  const buffer = Buffer.from(response.data)
+
   if (!esMP3(buffer)) {
-    return {
-      ready: false,
-      retryAfterSeconds: 2
-    }
+    throw new Error(
+      'El enlace de Faa no devolvió un MP3 válido.'
+    )
   }
 
-  await fs.promises.writeFile(
-    destino,
-    buffer
-  )
+  await fs.promises.writeFile(destino, buffer)
 
   return {
     ready: true,
@@ -154,173 +152,54 @@ async function descargarArchivo(
 }
 
 // ═══════════════════════════════════════
-// ✰ HIKARI API
-// ═══════════════════════════════════════
-
-async function obtenerAudio(
-  youtubeUrl,
-  quality
-) {
-  if (!API_KEY) {
-    throw new Error(
-      'HIKARI_API_KEY no está configurada.'
-    )
-  }
-
-  const endpoint =
-    `${API_URL}?url=${encodeURIComponent(youtubeUrl)}` +
-    `&quality=${quality}`
-
-  const response = await axios.get(
-    endpoint,
-    {
-      timeout: 60000,
-
-      headers: {
-        'X-API-Key': API_KEY,
-        Accept: 'application/json',
-        'User-Agent': 'SaitamaBot'
-      },
-
-      validateStatus: () => true
-    }
-  )
-
-  const json = response.data
-
-  const data =
-    json?.response || json
-
-  if (
-    response.status < 200 ||
-    response.status >= 300 ||
-    data?.success !== true
-  ) {
-    throw new Error(
-      data?.message ||
-      json?.message ||
-      `Hikari respondió HTTP ${response.status}`
-    )
-  }
-
-  const info = data?.data
-
-  if (!info) {
-    throw new Error(
-      'Hikari no devolvió los datos del audio.'
-    )
-  }
-
-  if (!info.downloadUrl) {
-    throw new Error(
-      'Hikari no devolvió downloadUrl.'
-    )
-  }
-
-  return info
-}
-
-// ═══════════════════════════════════════
 // ✰ PROCESAR YOUTUBE
 // ═══════════════════════════════════════
 
-async function procesarYouTube(
-  youtubeUrl
-) {
+async function procesarYouTube(youtubeUrl) {
+  const info = await obtenerAudio(youtubeUrl)
+
+  const filename = `${limpiarNombre(info.title)}.mp3`
+
+  const destino = path.join(
+    TMP_DIR,
+    `${Date.now()}-${filename}`
+  )
+
   let ultimoError = null
 
-  for (const quality of QUALITIES) {
+  for (let intento = 1; intento <= MAX_ATTEMPTS; intento++) {
     try {
-      const info =
-        await obtenerAudio(
-          youtubeUrl,
-          quality
-        )
-
-      const filename =
-        limpiarNombre(
-          info.filename ||
-          'audio.mp3'
-        )
-
-      const nombreFinal =
-        filename
-          .toLowerCase()
-          .endsWith('.mp3')
-          ? filename
-          : `${filename}.mp3`
-
-      const destino =
-        path.join(
-          TMP_DIR,
-          `${Date.now()}-${nombreFinal}`
-        )
-
-      const fuentes = []
-
-      // Intentar proveedor primero
-      if (info.providerUrl) {
-        fuentes.push(
-          info.providerUrl
-        )
-      }
-
-      // Fallback Hikari
-      if (
-        info.downloadUrl &&
-        !fuentes.includes(
-          info.downloadUrl
-        )
-      ) {
-        fuentes.push(
-          info.downloadUrl
-        )
-      }
-
-      for (const fuente of fuentes) {
-        for (
-          let intento = 1;
-          intento <= MAX_ATTEMPTS;
-          intento++
-        ) {
-          const resultado =
-            await descargarArchivo(
-              fuente,
-              destino
-            )
-
-          if (resultado.ready) {
-            return {
-              path: destino,
-              filename: nombreFinal,
-              quality,
-              size: resultado.size
-            }
-          }
-
-          await esperar(
-            (
-              resultado.retryAfterSeconds ||
-              2
-            ) * 1000
-          )
-        }
-      }
-
-      throw new Error(
-        'Hikari no terminó de preparar el audio.'
+      const resultado = await descargarArchivo(
+        info.download,
+        destino
       )
 
+      if (resultado.ready) {
+        return {
+          path: destino,
+          filename,
+          title: info.title,
+          thumbnail: info.thumbnail,
+          duration: info.duration,
+          size: resultado.size
+        }
+      }
     } catch (error) {
       ultimoError = error
+
+      try {
+        await rm(destino, { force: true })
+      } catch {}
+
+      if (intento < MAX_ATTEMPTS) {
+        await esperar(2000)
+      }
     }
   }
 
   throw (
     ultimoError ||
-    new Error(
-      'No se pudo obtener el audio.'
-    )
+    new Error('No se pudo descargar el MP3.')
   )
 }
 
@@ -337,7 +216,6 @@ const handler = async (
     command
   }
 ) => {
-
   let entrada = args?.[0]
 
   if (!entrada) {
@@ -345,6 +223,7 @@ const handler = async (
       `*༺═────── ✰ ──────═༻*\n` +
       `*༻ 𝚄𝚂𝙾 ✰*\n\n` +
       `*༻ ${usedPrefix + command} <URL o ID de YouTube>*\n` +
+      `*༻ Envía el MP3 como documento.*\n` +
       `*༺═────── ✰ ──────═༻*`
     )
   }
@@ -352,22 +231,16 @@ const handler = async (
   entrada = entrada.trim()
 
   // ═══════════════════════════════════
-  // ✰ URL O VIDEO ID
+  // ✰ VALIDAR YOUTUBE
   // ═══════════════════════════════════
 
   const esVideoId =
-    /^[a-zA-Z0-9_-]{11}$/.test(
-      entrada
-    )
+    /^[a-zA-Z0-9_-]{11}$/.test(entrada)
 
   const esUrlYouTube =
-    /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i
-      .test(entrada)
+    /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(entrada)
 
-  if (
-    !esVideoId &&
-    !esUrlYouTube
-  ) {
+  if (!esVideoId && !esUrlYouTube) {
     return m.reply(
       `*༺═────── ✰ ──────═༻*\n` +
       `*༻ 𝙴𝚁𝚁𝙾𝚁 ✰*\n\n` +
@@ -376,10 +249,9 @@ const handler = async (
     )
   }
 
-  const youtubeUrl =
-    esVideoId
-      ? `https://www.youtube.com/watch?v=${entrada}`
-      : entrada
+  const youtubeUrl = esVideoId
+    ? `https://www.youtube.com/watch?v=${entrada}`
+    : entrada
 
   const reaccion = async emoji => {
     try {
@@ -392,43 +264,13 @@ const handler = async (
   try {
     await reaccion('⏳')
 
-    await fs.promises.mkdir(
-      TMP_DIR,
-      {
-        recursive: true
-      }
-    )
+    await fs.promises.mkdir(TMP_DIR, {
+      recursive: true
+    })
 
-    const resultado =
-      await procesarYouTube(
-        youtubeUrl
-      )
+    const resultado = await procesarYouTube(youtubeUrl)
 
-    archivo =
-      resultado.path
-
-    // ═════════════════════════════════
-    // ✰ TAGS
-    // ═════════════════════════════════
-
-    try {
-      if (
-        typeof writeAudioTags ===
-        'function'
-      ) {
-        await writeAudioTags(
-          archivo,
-          {
-            title:
-              resultado.filename
-                .replace(
-                  /\.mp3$/i,
-                  ''
-                )
-          }
-        )
-      }
-    } catch {}
+    archivo = resultado.path
 
     // ═════════════════════════════════
     // ✰ ENVIAR COMO DOCUMENTO
@@ -441,14 +283,15 @@ const handler = async (
           url: archivo
         },
 
-        mimetype:
-          'audio/mpeg',
+        mimetype: 'audio/mpeg',
 
-        fileName:
-          resultado.filename,
+        fileName: resultado.filename,
 
         caption:
-          `*${resultado.filename}*`
+          `*༺═────── ✰ ──────═༻*\n` +
+          `*༻ 𝚈𝙾𝚄𝚃𝚄𝙱𝙴 𝙼𝙿𝟹 ✰*\n\n` +
+          `*༻ ${resultado.title}*\n` +
+          `*༺═────── ✰ ──────═༻*`
       },
       {
         quoted: m
@@ -458,27 +301,24 @@ const handler = async (
     await reaccion('✅')
 
   } catch (error) {
+    console.error('[SAITAMABOT YTMP3DOC FAA]', error)
 
     await reaccion('❌')
 
     await m.reply(
       `*༺═────── ✰ ──────═༻*\n` +
-      `*༻ 𝙴𝚁𝚁𝙾𝚁 𝚈𝚃𝙼𝙿𝟹 𝙳𝙾𝙲 ✰*\n\n` +
-      `*༻ No se pudo descargar el audio.*\n` +
+      `*༻ 𝙴𝚁𝚁𝙾𝚁 𝚈𝚃𝙼𝙿𝟹𝙳𝙾𝙲 ✰*\n\n` +
+      `*༻ No se pudo enviar el MP3 como documento.*\n` +
       `*༻ Intenta nuevamente en unos segundos.*\n` +
       `*༺═────── ✰ ──────═༻*`
     )
 
   } finally {
-
     if (archivo) {
       try {
-        await rm(
-          archivo,
-          {
-            force: true
-          }
-        )
+        await rm(archivo, {
+          force: true
+        })
       } catch {}
     }
   }
@@ -504,3 +344,4 @@ handler.command = [
 handler.register = false
 
 export default handler
+
