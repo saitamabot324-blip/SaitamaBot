@@ -3,3 +3,5 @@ sessions/
 tmp/
 .env
 package-lock.json
+.env
+.env.backup
