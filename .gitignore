@@ -1,7 +1,12 @@
 node_modules/
+.env
+.env.*
+!.env.example
 sessions/
 tmp/
-.env
-package-lock.json
-.env
-.env.backup
+*.log
+*.bak
+test-*.js
+test-*.mjs
+SaitamaBot.zip
+lib/database/data/activity/

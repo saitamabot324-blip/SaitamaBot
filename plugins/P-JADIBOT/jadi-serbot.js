@@ -1,9 +1,5 @@
 import * as baileys from '@whiskeysockets/baileys'
 
-const { generateWAMessageFromContent } = baileys
-
-import path from 'path'
-import fs from 'fs'
 import {
   startSubBot,
   subBots
@@ -12,6 +8,17 @@ import {
 // ═════════════════════════════════════
 // ✰ SAITAMABOT • SERBOT
 // ═════════════════════════════════════
+
+async function react(conn, m, emoji) {
+  try {
+    await conn.sendMessage(m.chat, {
+      react: {
+        text: emoji,
+        key: m.key
+      }
+    })
+  } catch {}
+}
 
 const handler = async (
   m,
@@ -39,7 +46,7 @@ https://wa.me/${mainNum}?text=${encodeURIComponent(`${usedPrefix}${command}`)}`
     // ✰ NÚMERO DEL USUARIO
     const numero = m.sender.split('@')[0]
 
-    // ✰ SESIÓN YA ACTIVA
+    // ✰ COMPROBAR SESIÓN ACTIVA
     if (subBots.has(numero)) {
       return m.reply(
 `༺ ✰ 𝚂𝙴𝚂𝙸Ó𝙽 𝙰𝙲𝚃𝙸𝚅𝙰 ✰ ༻
@@ -50,27 +57,16 @@ https://wa.me/${mainNum}?text=${encodeURIComponent(`${usedPrefix}${command}`)}`
       )
     }
 
-    // ✰ COMPROBAR SESIÓN
-    const sessionPath = path.join(
-      './sessions/subbots',
-      numero
-    )
+    // ✰ REACCIÓN DE VINCULACIÓN
+    await react(zen, m, '🔗')
 
-    const credsPath = path.join(
-      sessionPath,
-      'creds.json'
-    )
-
-    const hasSession = fs.existsSync(credsPath)
-
-    // ✰ INICIAR SUB-BOT
+    // ✰ GENERAR CÓDIGO
     const resultado = await startSubBot(
       zen,
       numero,
       m
     )
 
-    // ✰ EXTRAER CÓDIGO
     const codigo =
       typeof resultado === 'string'
         ? resultado
@@ -79,14 +75,27 @@ https://wa.me/${mainNum}?text=${encodeURIComponent(`${usedPrefix}${command}`)}`
           resultado?.codigo ||
           null
 
-    // ✰ SIN CÓDIGO: NO ENVIAR OTRO MENSAJE
-    if (!codigo) return
+    if (!codigo) {
+      await react(zen, m, '❌')
+
+      return m.reply(
+`༺ ✰ 𝙴𝚁𝚁𝙾𝚁 𝙳𝙴 𝚅𝙸𝙽𝙲𝚄𝙻𝙰𝙲𝙸Ó𝙽 ✰ ༻
+
+> ✰ No se pudo generar el código.
+> ✰ Intenta nuevamente en unos minutos.
+
+SaitamaBot`
+      )
+    }
 
     const codigoLimpio = String(codigo)
       .replace(/\s+/g, '')
       .trim()
 
-    if (!codigoLimpio) return
+    if (!codigoLimpio) {
+      await react(zen, m, '❌')
+      return
+    }
 
     // ✰ MENSAJE ÚNICO
     const tutorial =
@@ -106,7 +115,7 @@ https://wa.me/${mainNum}?text=${encodeURIComponent(`${usedPrefix}${command}`)}`
 
 > ✰ 𝙽𝚘 𝚌𝚘𝚖𝚙𝚊𝚛𝚝𝚊𝚜 𝚎𝚕 𝚌ó𝚍𝚒𝚐𝚘 𝚌𝚘𝚗 𝚘𝚝𝚛𝚊𝚜 𝚙𝚎𝚛𝚜𝚘𝚗𝚊𝚜.`
 
-    // ✰ MENSAJE NATIVO CON BOTÓN PARA COPIAR
+    // ✰ BOTÓN NATIVO PARA COPIAR
     const msg = await baileys.generateWAMessage(
       m.chat,
       {
@@ -128,18 +137,31 @@ https://wa.me/${mainNum}?text=${encodeURIComponent(`${usedPrefix}${command}`)}`
     await zen.relayMessage(m.chat, msg.message, {
       messageId: msg.key.id
     })
-// ═════════════════════════════════════
-// ✰ CONFIGURACIÓN
-// ═════════════════════════════════════
 
-    } catch (error) {
-      console.error(
-        '[SERBOT]',
-        error?.stack || error?.message || error
-      )
-      return
-    }
+    // ✰ VINCULACIÓN ENVIADA
+    await react(zen, m, '✅')
+
+  } catch (error) {
+    console.error(
+      '[SERBOT]',
+      error?.stack || error?.message || error
+    )
+
+    await react(zen, m, '❌')
+
+    return m.reply(
+`༺ ✰ 𝙴𝚁𝚁𝙾𝚁 𝚂𝙴𝚁𝙱𝙾𝚃 ✰ ༻
+
+> ✰ ${error.message || 'Ocurrió un error al iniciar la vinculación.'}
+
+SaitamaBot`
+    )
   }
+}
+
+// ═════════════════════════════════════
+// ✰ COMANDOS
+// ═════════════════════════════════════
 
 handler.help = [
   'serbot',
