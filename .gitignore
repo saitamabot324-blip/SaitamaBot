@@ -10,3 +10,23 @@ test-*.js
 test-*.mjs
 SaitamaBot.zip
 lib/database/data/activity/
+
+# Dependencias y archivos temporales
+node_modules/
+.env
+.env.*
+!.env.example
+sessions/
+tmp/
+*.log
+*.bak
+
+# Pruebas locales
+test-*.js
+test-*.mjs
+
+# Archivos comprimidos
+SaitamaBot.zip
+
+# Datos de actividad
+lib/database/data/activity/

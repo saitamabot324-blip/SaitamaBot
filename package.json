@@ -16,7 +16,7 @@
     "@hiudyy/ytdl": "^0.2.3",
     "@img/sharp-wasm32": "^0.35.4",
     "@traceryn/tiktok-sdk": "^1.1.0",
-    "@whiskeysockets/baileys": "github:itsliaaa/baileys",
+    "@whiskeysockets/baileys": "git+https://github.com/itsliaaa/baileys.git#b07993d7d2b3dbd64899d5251388d441f3dae0c4",
     "awesome-phonenumber": "^6.10.0",
     "axios": "^1.6.8",
     "chalk": "^5.3.0",
