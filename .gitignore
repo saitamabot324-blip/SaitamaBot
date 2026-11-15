@@ -30,3 +30,8 @@ SaitamaBot.zip
 
 # Datos de actividad
 lib/database/data/activity/
+
+# Archivos locales
+node_modules/
+sessions/
+nixpacks.toml.backup
